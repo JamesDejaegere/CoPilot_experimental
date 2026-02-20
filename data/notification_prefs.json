@@ -1,0 +1,6 @@
+{}{
+  "operator@shipper.com::shipper": {
+    "email": true,
+    "push": false
+  }
+}

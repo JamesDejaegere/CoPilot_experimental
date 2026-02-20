@@ -1,2 +1,103 @@
-# CoPilot_experimental
-experimental repo for trying out copilot agents and other stuff
+# MSC Digital Solutions MVP Prototype
+
+Working prototype for a focused subset of requirements from `MSC_Digital_Solutions_Requirements.docx`.
+
+## MVP Scope
+
+This implementation delivers a functional demo for key user stories:
+
+- Shipment tracking by container number, B/L number, or booking number.
+- Event milestone timeline with status and ETA.
+- Notification preferences (email/push) with role-based access control.
+- Lightweight backend API with session-based auth and persisted notification settings.
+
+## Run the Application
+
+Start the backend (which also serves the frontend):
+
+```bash
+python server.py
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
+If port `8000` is already in use:
+
+```bash
+PORT=8001 python server.py
+```
+
+## Demo Login
+
+- Email: any valid email
+- Password: `demo`
+- Roles:
+  - `shipper`
+  - `freight_forwarder`
+  - `viewer`
+  - `admin`
+
+## What Is Implemented
+
+- Role-aware login with backend session cookie.
+- Tracking search by `container`, `bl`, and `booking` reference.
+- Shipment detail cards + chronological milestone event log.
+- Notification preferences persisted in `data/notification_prefs.json`.
+- Role restriction: `viewer` can track but cannot save notification preferences.
+
+## Out of Scope
+
+- External enterprise integrations (INTTRA, GT Nexus, CargoSmart).
+- Full production identity stack (OAuth/OIDC/MFA/SSO).
+- eBL issuance/endorsement workflows.
+- IoT ingest pipelines for smart container and reefer telemetry.
+
+## Demo API Endpoints
+
+- `POST /api/login` (`email`, `password`, `role`)
+- `POST /api/logout`
+- `GET /api/me`
+- `GET /api/shipments/search?type=container|bl|booking&value=...`
+- `GET /api/notifications`
+- `PUT /api/notifications` (`email`, `push`)
+
+## Requirements Traceability
+
+| Requirement ID | Description | Status | Implementation Note |
+|---|---|---|---|
+| FR-01 | User Registration & Login | Partial | Login is implemented, registration and external IdP are not |
+| FR-02 | Role-Based Access Control | Built (MVP) | Role permissions enforced for notification actions |
+| FR-09 | Shipment Tracking by Container # | Built (MVP) | Search type `container` |
+| FR-10 | Shipment Tracking by B/L or Booking # | Built (MVP) | Search types `bl` and `booking` |
+| FR-11 | Event Milestone Log | Built (MVP) | Event timeline shown per shipment |
+| FR-12 | Automated Tracking Notifications | Built (MVP, simplified) | User can save email/push preferences |
+| FR-26 | REST API for Tracking Data | Partial | Internal demo API for tracking and preferences |
+| NFR-02 | Performance | Partial | Lightweight app, no formal load/perf testing |
+| NFR-03 | Security | Partial | Session cookie + prototype auth, not production-grade |
+
+## AI Usage Log
+
+- Tooling: GitHub Copilot agent (model: GPT-5.3-Codex).
+- AI-assisted tasks:
+  - Requirements extraction and scoping.
+  - Frontend and backend implementation.
+  - Traceability matrix and demo documentation.
+- Validation:
+  - API flow checks for login/search/notification persistence.
+  - Edge case behavior for unknown tracking references.
+- Reflection:
+  - Strong acceleration for scaffolding and integration.
+  - Production security and external integrations remain future work.
+
+## 5-Minute Demo Script
+
+1. Start server and open the app.
+2. Login as `viewer`; show tracking works and notification save is blocked.
+3. Search `MSCU1234567`; show status and milestone timeline.
+4. Search an unknown reference; show empty/not-found behavior.
+5. Logout and login as `shipper`; save notification preferences.
+6. Close with the traceability table and explicitly call out mocked/partial areas.

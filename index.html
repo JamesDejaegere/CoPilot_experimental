@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MSC Digital Solutions MVP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>MSC Digital Solutions MVP</h1>
+      <p>Prototype for tracking and notifications with mock data</p>
+    </header>
+
+    <main class="container">
+      <section id="auth-card" class="card">
+        <h2>Login</h2>
+        <form id="login-form">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="e.g. operator@shipper.com" required />
+
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="demo" required />
+
+          <label for="role">Role</label>
+          <select id="role" required>
+            <option value="shipper">Shipper</option>
+            <option value="freight_forwarder">Freight Forwarder</option>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
+
+          <button type="submit">Sign in</button>
+          <p class="hint">Use any email address and password <strong>demo</strong>.</p>
+        </form>
+      </section>
+
+      <section id="app" class="hidden">
+        <div class="card">
+          <div class="row space-between">
+            <h2>Dashboard</h2>
+            <div>
+              <span id="session-info"></span>
+              <button id="logout" class="secondary">Sign out</button>
+            </div>
+          </div>
+
+          <div class="row two-col">
+            <div>
+              <h3>Search shipment</h3>
+              <form id="search-form">
+                <label for="search-type">Search by</label>
+                <select id="search-type">
+                  <option value="container">Container #</option>
+                  <option value="bl">B/L #</option>
+                  <option value="booking">Booking #</option>
+                </select>
+
+                <label for="search-value">Value</label>
+                <input id="search-value" type="text" required placeholder="e.g. MSCU1234567" />
+                <button type="submit">Search</button>
+              </form>
+              <p id="search-message" class="message"></p>
+            </div>
+
+            <div>
+              <h3>Notification preferences</h3>
+              <form id="notification-form">
+                <label>
+                  <input type="checkbox" id="notif-email" /> E-mail updates
+                </label>
+                <label>
+                  <input type="checkbox" id="notif-push" /> Push updates
+                </label>
+                <button id="save-notif" type="submit">Save</button>
+              </form>
+              <p id="notif-message" class="message"></p>
+            </div>
+          </div>
+        </div>
+
+        <section class="card" id="result-card">
+          <h3>Shipment details</h3>
+          <div id="shipment-summary" class="summary"></div>
+          <h4>Event milestone log</h4>
+          <ul id="event-log" class="event-log"></ul>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
