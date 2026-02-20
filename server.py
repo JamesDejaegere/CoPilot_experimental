@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import uuid
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +12,14 @@ from urllib.parse import parse_qs, urlparse
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 PREFS_FILE = DATA_DIR / "notification_prefs.json"
+AUDIT_FILE = DATA_DIR / "audit.log"
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SEARCH_PATTERNS = {
+    "container": re.compile(r"^[A-Z]{4}[A-Z0-9]{7}$"),
+    "bl": re.compile(r"^[A-Z0-9\-]{4,30}$"),
+    "booking": re.compile(r"^[A-Z0-9\-]{4,30}$"),
+}
 
 MOCK_USERS = {
     "shipper": {"label": "Shipper", "permissions": ["track", "notifications"]},
@@ -63,6 +73,8 @@ def ensure_storage():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not PREFS_FILE.exists():
         PREFS_FILE.write_text("{}", encoding="utf-8")
+    if not AUDIT_FILE.exists():
+        AUDIT_FILE.write_text("", encoding="utf-8")
 
 
 def load_prefs():
@@ -80,6 +92,12 @@ def save_prefs(data):
 
 def user_pref_key(email, role):
     return f"{email.lower()}::{role}"
+
+
+def write_audit_record(record):
+    ensure_storage()
+    with AUDIT_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\n")
 
 
 class AppHandler(SimpleHTTPRequestHandler):
@@ -146,18 +164,53 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def client_ip(self):
+        return self.client_address[0] if self.client_address else "unknown"
+
+    def audit(self, action, status, success, detail=None, user=None):
+        actor = user
+        if actor is None:
+            _, session = self.get_session()
+            actor = session
+
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "method": self.command,
+            "path": self.path,
+            "status": int(status),
+            "success": bool(success),
+            "clientIp": self.client_ip(),
+            "detail": detail or "",
+            "user": {
+                "email": actor.get("email") if actor else None,
+                "role": actor.get("role") if actor else None,
+            },
+        }
+        write_audit_record(record)
+
+    def is_valid_email(self, value):
+        return bool(EMAIL_PATTERN.match(value))
+
+    def is_valid_search_value(self, search_type, value):
+        pattern = SEARCH_PATTERNS.get(search_type)
+        return bool(pattern and pattern.match(value))
+
     def handle_login(self):
         body = self.parse_body()
         if body is None:
+            self.audit("login", HTTPStatus.BAD_REQUEST, False, "invalid_json")
             return self.send_json({"error": "Invalid JSON"}, HTTPStatus.BAD_REQUEST)
 
         email = str(body.get("email", "")).strip()
         password = str(body.get("password", ""))
         role = str(body.get("role", ""))
 
-        if not email or role not in MOCK_USERS:
+        if not email or not self.is_valid_email(email) or role not in MOCK_USERS:
+            self.audit("login", HTTPStatus.BAD_REQUEST, False, "invalid_login_payload")
             return self.send_json({"error": "Invalid login payload"}, HTTPStatus.BAD_REQUEST)
         if password != "demo":
+            self.audit("login", HTTPStatus.UNAUTHORIZED, False, "invalid_password", {"email": email, "role": role})
             return self.send_json({"error": "Invalid password"}, HTTPStatus.UNAUTHORIZED)
 
         session_id = str(uuid.uuid4())
@@ -170,13 +223,15 @@ class AppHandler(SimpleHTTPRequestHandler):
         SESSIONS[session_id] = user
 
         headers = {"Set-Cookie": f"session_id={session_id}; Path=/; HttpOnly; SameSite=Lax"}
+        self.audit("login", HTTPStatus.OK, True, "session_created", user)
         return self.send_json({"user": user}, HTTPStatus.OK, headers)
 
     def handle_logout(self):
-        session_id, _ = self.get_session()
+        session_id, session = self.get_session()
         if session_id:
             SESSIONS.pop(session_id, None)
         headers = {"Set-Cookie": "session_id=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"}
+        self.audit("logout", HTTPStatus.OK, True, "session_cleared", session)
         return self.send_json({"ok": True}, HTTPStatus.OK, headers)
 
     def handle_me(self):
@@ -188,9 +243,11 @@ class AppHandler(SimpleHTTPRequestHandler):
     def handle_search(self, parsed):
         _, session = self.require_session()
         if not session:
+            self.audit("search", HTTPStatus.UNAUTHORIZED, False, "unauthorized")
             return
 
         if "track" not in session["permissions"]:
+            self.audit("search", HTTPStatus.FORBIDDEN, False, "forbidden", session)
             return self.send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
 
         query = parse_qs(parsed.query)
@@ -198,6 +255,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         value = query.get("value", [""])[0].strip().upper()
 
         if search_type not in {"container", "bl", "booking"} or not value:
+            self.audit("search", HTTPStatus.BAD_REQUEST, False, "missing_or_invalid_params", session)
+            return self.send_json({"error": "Invalid search parameters"}, HTTPStatus.BAD_REQUEST)
+
+        if not self.is_valid_search_value(search_type, value):
+            self.audit("search", HTTPStatus.BAD_REQUEST, False, "invalid_search_format", session)
             return self.send_json({"error": "Invalid search parameters"}, HTTPStatus.BAD_REQUEST)
 
         def matches(shipment):
@@ -209,40 +271,52 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         shipment = next((item for item in SHIPMENTS if matches(item)), None)
         if not shipment:
+            self.audit("search", HTTPStatus.OK, True, "not_found", session)
             return self.send_json({"found": False}, HTTPStatus.OK)
+        self.audit("search", HTTPStatus.OK, True, "found", session)
         return self.send_json({"found": True, "shipment": shipment}, HTTPStatus.OK)
 
     def handle_get_notifications(self):
         _, session = self.require_session()
         if not session:
+            self.audit("notifications_get", HTTPStatus.UNAUTHORIZED, False, "unauthorized")
             return
 
         prefs = load_prefs()
         key = user_pref_key(session["email"], session["role"])
         user_prefs = prefs.get(key, {"email": False, "push": False})
 
+        self.audit("notifications_get", HTTPStatus.OK, True, "loaded", session)
         return self.send_json({"preferences": user_prefs}, HTTPStatus.OK)
 
     def handle_put_notifications(self):
         _, session = self.require_session()
         if not session:
+            self.audit("notifications_put", HTTPStatus.UNAUTHORIZED, False, "unauthorized")
             return
 
         if "notifications" not in session["permissions"]:
+            self.audit("notifications_put", HTTPStatus.FORBIDDEN, False, "forbidden", session)
             return self.send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
 
         body = self.parse_body()
         if body is None:
+            self.audit("notifications_put", HTTPStatus.BAD_REQUEST, False, "invalid_json", session)
             return self.send_json({"error": "Invalid JSON"}, HTTPStatus.BAD_REQUEST)
 
-        email_pref = bool(body.get("email", False))
-        push_pref = bool(body.get("push", False))
+        email_pref = body.get("email", False)
+        push_pref = body.get("push", False)
+
+        if not isinstance(email_pref, bool) or not isinstance(push_pref, bool):
+            self.audit("notifications_put", HTTPStatus.BAD_REQUEST, False, "invalid_boolean_payload", session)
+            return self.send_json({"error": "Invalid notification payload"}, HTTPStatus.BAD_REQUEST)
 
         prefs = load_prefs()
         key = user_pref_key(session["email"], session["role"])
         prefs[key] = {"email": email_pref, "push": push_pref}
         save_prefs(prefs)
 
+        self.audit("notifications_put", HTTPStatus.OK, True, "saved", session)
         return self.send_json({"ok": True, "preferences": prefs[key]}, HTTPStatus.OK)
 
 

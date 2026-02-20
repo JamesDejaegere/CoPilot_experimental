@@ -43,15 +43,25 @@ async function handleLoginSubmit(event) {
   const password = document.getElementById("password").value;
   const role = document.getElementById("role").value;
 
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, role })
-  });
+  let response;
+  try {
+    response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, role })
+    });
+  } catch (error) {
+    alert("Backend is not reachable. Start the app with 'python server.py'.");
+    return;
+  }
 
-  const payload = await response.json();
+  const payload = await readJsonSafe(response);
   if (!response.ok) {
-    alert(payload.error || "Login failed.");
+    if (response.status === 501) {
+      alert("API is unavailable on this server. Start the app with 'python server.py' (not 'python -m http.server').");
+      return;
+    }
+    alert((payload && payload.error) || "Login failed.");
     return;
   }
 
@@ -89,11 +99,15 @@ async function handleSearchSubmit(event) {
 
   const params = new URLSearchParams({ type: searchType, value: rawValue });
   const response = await fetch(`/api/shipments/search?${params.toString()}`);
-  const payload = await response.json();
+  const payload = await readJsonSafe(response);
 
   if (!response.ok) {
     clearResults();
-    searchMessage.textContent = payload.error || "Search failed.";
+    if (response.status === 501) {
+      searchMessage.textContent = "API is unavailable on this server. Start with 'python server.py'.";
+      return;
+    }
+    searchMessage.textContent = (payload && payload.error) || "Search failed.";
     return;
   }
 
@@ -120,10 +134,14 @@ async function handleNotificationSubmit(event) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: notifEmail.checked, push: notifPush.checked })
   });
-  const payload = await response.json();
+  const payload = await readJsonSafe(response);
 
   if (!response.ok) {
-    notifMessage.textContent = payload.error || "Saving preferences failed.";
+    if (response.status === 501) {
+      notifMessage.textContent = "API is unavailable on this server. Start with 'python server.py'.";
+      return;
+    }
+    notifMessage.textContent = (payload && payload.error) || "Saving preferences failed.";
     return;
   }
 
@@ -141,7 +159,7 @@ function applyAuthenticatedUI() {
 
 async function loadNotificationPreferences() {
   const response = await fetch("/api/notifications");
-  const payload = await response.json();
+  const payload = await readJsonSafe(response);
   if (!response.ok) {
     state.notificationPrefs = { email: false, push: false };
     notifEmail.checked = false;
@@ -208,9 +226,9 @@ function formatDate(isoString) {
 
 async function bootstrapSession() {
   const response = await fetch("/api/me");
-  const payload = await response.json();
+  const payload = await readJsonSafe(response);
 
-  if (payload.authenticated && payload.user) {
+  if (payload && payload.authenticated && payload.user) {
     state.session = payload.user;
     applyAuthenticatedUI();
     await loadNotificationPreferences();
@@ -218,6 +236,14 @@ async function bootstrapSession() {
     state.session = null;
     authCard.classList.remove("hidden");
     app.classList.add("hidden");
+  }
+}
+
+async function readJsonSafe(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    return null;
   }
 }
 

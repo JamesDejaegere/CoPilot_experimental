@@ -31,6 +31,14 @@ If port `8000` is already in use:
 PORT=8001 python server.py
 ```
 
+### Troubleshooting: login returns 501
+
+If you see `501 Unsupported method ('POST')`, you likely started a static server (`python -m http.server`) instead of the backend server.
+
+- Stop the static server.
+- Start this app with `python server.py` (or `PORT=8001 python server.py`).
+- Open the same port in the browser as the backend server.
+
 ## Demo Login
 
 - Email: any valid email
@@ -48,6 +56,8 @@ PORT=8001 python server.py
 - Shipment detail cards + chronological milestone event log.
 - Notification preferences persisted in `data/notification_prefs.json`.
 - Role restriction: `viewer` can track but cannot save notification preferences.
+- Audit log records written to `data/audit.log` (JSON lines).
+- Input validation for email format, search reference format, and notification booleans.
 
 ## Out of Scope
 
@@ -64,6 +74,18 @@ PORT=8001 python server.py
 - `GET /api/shipments/search?type=container|bl|booking&value=...`
 - `GET /api/notifications`
 - `PUT /api/notifications` (`email`, `push`)
+
+## Validation Rules
+
+- `POST /api/login`: valid email format, supported role, password must be `demo`.
+- `GET /api/shipments/search`: `type` must be `container|bl|booking`; `value` must match expected format.
+- `PUT /api/notifications`: `email` and `push` must be booleans.
+
+## Audit Log
+
+- File: `data/audit.log`
+- Format: one JSON record per line
+- Captures: timestamp, action, endpoint, status, success, client IP, and user context
 
 ## Requirements Traceability
 
