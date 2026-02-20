@@ -126,13 +126,21 @@ class AppHandler(SimpleHTTPRequestHandler):
             return self.handle_login()
         if parsed.path == "/api/logout":
             return self.handle_logout()
-        return self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+        return self.send_error_json(
+            HTTPStatus.NOT_FOUND,
+            "NOT_FOUND",
+            "The requested endpoint does not exist.",
+        )
 
     def do_PUT(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/notifications":
             return self.handle_put_notifications()
-        return self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+        return self.send_error_json(
+            HTTPStatus.NOT_FOUND,
+            "NOT_FOUND",
+            "The requested endpoint does not exist.",
+        )
 
     def parse_body(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -155,7 +163,11 @@ class AppHandler(SimpleHTTPRequestHandler):
     def require_session(self):
         session_id, session = self.get_session()
         if not session:
-            self.send_json({"error": "Unauthorized"}, HTTPStatus.UNAUTHORIZED)
+            self.send_error_json(
+                HTTPStatus.UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "Authentication is required.",
+            )
             return None, None
         return session_id, session
 
@@ -172,6 +184,17 @@ class AppHandler(SimpleHTTPRequestHandler):
                 self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def send_error_json(self, status, code, message, detail=None):
+        payload = {
+            "error": {
+                "code": code,
+                "message": message,
+            }
+        }
+        if detail:
+            payload["error"]["detail"] = detail
+        self.send_json(payload, status)
 
     def client_ip(self):
         return self.client_address[0] if self.client_address else "unknown"
@@ -219,7 +242,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         body = self.parse_body()
         if body is None:
             self.audit("login", HTTPStatus.BAD_REQUEST, False, "invalid_json")
-            return self.send_json({"error": "Invalid JSON"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_JSON",
+                "Request body must be valid JSON.",
+            )
 
         email = str(body.get("email", "")).strip()
         password = str(body.get("password", ""))
@@ -227,10 +254,18 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if not email or not self.is_valid_email(email) or role not in MOCK_USERS:
             self.audit("login", HTTPStatus.BAD_REQUEST, False, "invalid_login_payload")
-            return self.send_json({"error": "Invalid login payload"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_LOGIN_PAYLOAD",
+                "Login payload is invalid.",
+            )
         if password != "demo":
             self.audit("login", HTTPStatus.UNAUTHORIZED, False, "invalid_password", {"email": email, "role": role})
-            return self.send_json({"error": "Invalid password"}, HTTPStatus.UNAUTHORIZED)
+            return self.send_error_json(
+                HTTPStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "Invalid credentials.",
+            )
 
         session_id = str(uuid.uuid4())
         user = {
@@ -267,7 +302,11 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if "track" not in session["permissions"]:
             self.audit("search", HTTPStatus.FORBIDDEN, False, "forbidden", session)
-            return self.send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
+            return self.send_error_json(
+                HTTPStatus.FORBIDDEN,
+                "FORBIDDEN",
+                "You are not allowed to access this resource.",
+            )
 
         query = parse_qs(parsed.query)
         search_type = query.get("type", [""])[0]
@@ -275,11 +314,19 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if search_type not in {"container", "bl", "booking"} or not value:
             self.audit("search", HTTPStatus.BAD_REQUEST, False, "missing_or_invalid_params", session)
-            return self.send_json({"error": "Invalid search parameters"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_SEARCH_PARAMS",
+                "Search parameters are invalid.",
+            )
 
         if not self.is_valid_search_value(search_type, value):
             self.audit("search", HTTPStatus.BAD_REQUEST, False, "invalid_search_format", session)
-            return self.send_json({"error": "Invalid search parameters"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_SEARCH_FORMAT",
+                "Search value format is invalid for the selected type.",
+            )
 
         def matches(shipment):
             if search_type == "container":
@@ -316,19 +363,31 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if "notifications" not in session["permissions"]:
             self.audit("notifications_put", HTTPStatus.FORBIDDEN, False, "forbidden", session)
-            return self.send_json({"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
+            return self.send_error_json(
+                HTTPStatus.FORBIDDEN,
+                "FORBIDDEN",
+                "You are not allowed to access this resource.",
+            )
 
         body = self.parse_body()
         if body is None:
             self.audit("notifications_put", HTTPStatus.BAD_REQUEST, False, "invalid_json", session)
-            return self.send_json({"error": "Invalid JSON"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_JSON",
+                "Request body must be valid JSON.",
+            )
 
         email_pref = body.get("email", False)
         push_pref = body.get("push", False)
 
         if not isinstance(email_pref, bool) or not isinstance(push_pref, bool):
             self.audit("notifications_put", HTTPStatus.BAD_REQUEST, False, "invalid_boolean_payload", session)
-            return self.send_json({"error": "Invalid notification payload"}, HTTPStatus.BAD_REQUEST)
+            return self.send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_NOTIFICATION_PAYLOAD",
+                "Notification payload must contain boolean values for email and push.",
+            )
 
         prefs = load_prefs()
         key = user_pref_key(session["email"], session["role"])

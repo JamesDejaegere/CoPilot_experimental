@@ -82,6 +82,32 @@ If you see `501 Unsupported method ('POST')`, you likely started a static server
 - Every JSON API response includes `requestId`.
 - Audit records in `data/audit.log` include the same `requestId` for correlation.
 
+## Error Response Model
+
+API errors now follow this shape:
+
+```json
+{
+  "error": {
+    "code": "INVALID_JSON",
+    "message": "Request body must be valid JSON."
+  },
+  "requestId": "..."
+}
+```
+
+Current error codes:
+
+- `NOT_FOUND`
+- `UNAUTHORIZED`
+- `FORBIDDEN`
+- `INVALID_JSON`
+- `INVALID_LOGIN_PAYLOAD`
+- `INVALID_CREDENTIALS`
+- `INVALID_SEARCH_PARAMS`
+- `INVALID_SEARCH_FORMAT`
+- `INVALID_NOTIFICATION_PAYLOAD`
+
 ## Validation Rules
 
 - `POST /api/login`: valid email format, supported role, password must be `demo`.
