@@ -61,7 +61,7 @@ async function handleLoginSubmit(event) {
       alert("API is unavailable on this server. Start the app with 'python server.py' (not 'python -m http.server').");
       return;
     }
-    alert((payload && payload.error) || "Login failed.");
+    alert(getErrorMessage(payload, "Login failed."));
     return;
   }
 
@@ -107,7 +107,7 @@ async function handleSearchSubmit(event) {
       searchMessage.textContent = "API is unavailable on this server. Start with 'python server.py'.";
       return;
     }
-    searchMessage.textContent = (payload && payload.error) || "Search failed.";
+    searchMessage.textContent = getErrorMessage(payload, "Search failed.");
     return;
   }
 
@@ -141,7 +141,7 @@ async function handleNotificationSubmit(event) {
       notifMessage.textContent = "API is unavailable on this server. Start with 'python server.py'.";
       return;
     }
-    notifMessage.textContent = (payload && payload.error) || "Saving preferences failed.";
+    notifMessage.textContent = getErrorMessage(payload, "Saving preferences failed.");
     return;
   }
 
@@ -245,6 +245,21 @@ async function readJsonSafe(response) {
   } catch (error) {
     return null;
   }
+}
+
+function getErrorMessage(payload, fallback) {
+  if (!payload || !payload.error) {
+    return fallback;
+  }
+  if (typeof payload.error === "string") {
+    return payload.error;
+  }
+  if (typeof payload.error.message === "string") {
+    return payload.error.code
+      ? `${payload.error.message} (${payload.error.code})`
+      : payload.error.message;
+  }
+  return fallback;
 }
 
 clearResults();
