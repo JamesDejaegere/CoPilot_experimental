@@ -68,12 +68,19 @@ If you see `501 Unsupported method ('POST')`, you likely started a static server
 
 ## Demo API Endpoints
 
+- `GET /api/health`
 - `POST /api/login` (`email`, `password`, `role`)
 - `POST /api/logout`
 - `GET /api/me`
 - `GET /api/shipments/search?type=container|bl|booking&value=...`
 - `GET /api/notifications`
 - `PUT /api/notifications` (`email`, `push`)
+
+## Request Tracing
+
+- Every API response includes header `X-Request-ID`.
+- Every JSON API response includes `requestId`.
+- Audit records in `data/audit.log` include the same `requestId` for correlation.
 
 ## Validation Rules
 

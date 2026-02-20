@@ -104,8 +104,14 @@ class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
 
+    def setup(self):
+        super().setup()
+        self.request_id = str(uuid.uuid4())
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/health":
+            return self.handle_health()
         if parsed.path == "/api/me":
             return self.handle_me()
         if parsed.path == "/api/shipments/search":
@@ -154,10 +160,13 @@ class AppHandler(SimpleHTTPRequestHandler):
         return session_id, session
 
     def send_json(self, payload, status=HTTPStatus.OK, extra_headers=None):
-        body = json.dumps(payload).encode("utf-8")
+        response_payload = payload if isinstance(payload, dict) else {"data": payload}
+        response_payload["requestId"] = self.request_id
+        body = json.dumps(response_payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Request-ID", self.request_id)
         if extra_headers:
             for name, value in extra_headers.items():
                 self.send_header(name, value)
@@ -175,6 +184,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "requestId": self.request_id,
             "action": action,
             "method": self.command,
             "path": self.path,
@@ -188,6 +198,15 @@ class AppHandler(SimpleHTTPRequestHandler):
             },
         }
         write_audit_record(record)
+
+    def handle_health(self):
+        status_payload = {
+            "ok": True,
+            "service": "msc-digital-solutions-mvp",
+            "status": "healthy",
+        }
+        self.audit("health", HTTPStatus.OK, True, "health_check")
+        return self.send_json(status_payload, HTTPStatus.OK)
 
     def is_valid_email(self, value):
         return bool(EMAIL_PATTERN.match(value))
